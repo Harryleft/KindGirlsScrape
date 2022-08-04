@@ -46,24 +46,24 @@ async def parse_page(model_url):
     async with semaphore:
 
         model_html = pq(model_url)
-                # 获取model姓名
+        # 获取model姓名
         model_name = model_html.find ('#up_izq h3').text ()
 
-                # 获取model界面id
+        # 获取model界面id
         pattern = re.compile (r'id=(\d+)')
         model_id = re.search (pattern, model_url)
 
-                # 存储图片URL
+        # 存储图片URL
         model_photo_urls = []
 
-                # 迭代获取url
+        # 迭代获取url
         for item in model_html ('.gal_list a').items ():
-                    # 使用正则表达式获取URL
+            # 使用正则表达式获取URL
             urls = re.findall ("""<a[^>]+href=["']([^'"<>]+)["'][^<>]+/?>""", str (item))
             for url in urls:
                  model_photo_urls.append (url)
 
-                        # 使用字典存储
+        # 使用字典存储
         model_photos = {
                     'model_id': model_id.group (1),
                     'model_name': model_name,
@@ -74,7 +74,7 @@ async def parse_page(model_url):
 
 
 async def save_data(model_data):
-    f"""
+    """
     将图片保存至本地路径
     :param model_data:包含'model_name','model_id','model_urls'
     :return:
