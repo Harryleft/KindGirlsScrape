@@ -1,5 +1,5 @@
 # Simple Async Scrape KindGirls Program
-scrape www.kindgrils.com gallery
+use python to scrape www.kindgrils.com kind girls photo
 
 ## Environment
 python version: python 3.9
