@@ -1,127 +1,190 @@
-import hashlib
 import logging
 import time
+from socket import socket
 import aiofiles
-from retrying import retry
 from pyquery import PyQuery as pq
 import re
-from os.path import exists
+from os.path import exists, getsize
 from os import makedirs
-from datetime import datetime
 import aiohttp
 import asyncio
+import socket
+from urllib3.connection import HTTPConnection
 
-# 起始ID
-START_ID = 10701
-# 结束
-END_ID = 10800
-# 并发控制
-CONCURRENCY = 50
-semaphore = asyncio.Semaphore (CONCURRENCY)
+HTTPConnection.default_socket_options = (
+        HTTPConnection.default_socket_options + [
+    (socket.SOL_SOCKET, socket.SO_SNDBUF, 1000000),  # 1MB in byte
+    (socket.SOL_SOCKET, socket.SO_RCVBUF, 1000000)
+])
 
-# 格式化时间
-dt = datetime.now ()
-download_time = dt.strftime ('%Y-%m-%d')
 
-# 设置logging
-logging.basicConfig (level=logging.INFO,
+# set logging config
+logging.basicConfig(level=logging.INFO,
                      format='%(asctime)s - %(levelname)s : %(message)s')
-# 首页地址
+# www.kindgirls.com
 MAIN_URL = 'https://www.kindgirls.com/gallery.php?id={model_id}'
 
-# HEADER
+# set header
 HEADER = {
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36',
+    'Connection': 'close'
 }
 
-async def parse_page(model_url):
-    """
-    :param model_url:model UrL地址
-    :return:返回model基本信息
-    """
-    logging.info('Scraping url : %s ', model_url)
-
-    # 获取详情页的HTML
-    async with semaphore:
-
+class KindGirls():
+    async def parse_page(self,model_url):
+        """
+        This is a parse page program
+        :param model_url: model url
+        :return: call save_data() function to download photo file
+        """
+        # use PyQuery parse tool to parse model html file
+        await asyncio.sleep(1)
         model_html = pq(model_url)
-        # 获取model姓名
-        model_name = model_html.find ('#up_izq h3').text ()
 
-        # 获取model界面id
-        pattern = re.compile (r'id=(\d+)')
-        model_id = re.search (pattern, model_url)
+        # get model name
+        model_name = model_html.find ('#up_izq h3').text()
 
-        # 存储图片URL
-        model_photo_urls = []
+        # use Regex Expression get model id
+        pattern = re.compile(r'id=(\d+)')
+        model_id = re.search(pattern, model_url).group(1)
 
-        # 迭代获取url
-        for item in model_html ('.gal_list a').items ():
-            # 使用正则表达式获取URL
-            urls = re.findall ("""<a[^>]+href=["']([^'"<>]+)["'][^<>]+/?>""", str (item))
-            for url in urls:
-                 model_photo_urls.append (url)
+        # iterable get model url
+        number = 0
+        for item in model_html ('.gal_list a').items():
+            # use Regex Expression get model url
+            model_urls = re.findall("""<a[^>]+href=["']([^'"<>]+)["'][^<>]+/?>""", str(item))
+            for model_url in model_urls:
+                # model_urls.append(url)
+                # JPG file path
+                number += 1
+                photo_name = model_name + f'_{model_id}_' + str (number)
 
-        # 使用字典存储
-        model_photos = {
-                    'model_id': model_id.group (1),
-                    'model_name': model_name,
-                    'model_urls': model_photo_urls
-        }
+                # photo path
+                model_photo_path = f'KindGirls/{model_name}/{model_name}_{model_id}/{photo_name}.jpg'
 
-        return model_photos
+                # model photo path
+                photo_dir = f'KindGirls/{model_name}/{model_name}_{model_id}'
 
+                # judgement path
+                if exists(model_photo_path):
+                    # logging.info(f'{photo_name} is existed, skip download')
+                    pass
+                elif not exists(photo_dir):
 
-async def save_data(model_data):
-    """
-    将图片保存至本地路径
-    :param model_data:包含'model_name','model_id','model_urls'
-    :return:
-    """
-    async with semaphore:
-        start_time = time.time()
-        # 获取id和name
-        model_id = model_data.get('model_id')
-        model_name = model_data.get('model_name')
-        for model_url in model_data.get('model_urls'):
-            # 设置路径
-            MODEL_DATA_PATH = f'KindGirls/KindGirls_{download_time}/{model_name}/{model_name}_{model_id}'
-            exists (MODEL_DATA_PATH) or makedirs (MODEL_DATA_PATH)
+                    makedirs (photo_dir)
+                    logging.info(f"Create {model_name}_{model_id} Successfully!")
+                elif not exists(model_photo_path) or getsize(model_photo_path) == 0:
+                    logging.info (f"=======Asyncio Task : {photo_name}=======")
+                    # call async_download() function
+                    await self.async_download(model_url, photo_dir, photo_name)
 
-            # 异步下载到本地
-            async with aiohttp.ClientSession(headers=HEADER) as session:
-                async with session.get (model_url) as response:
-                    fileName = hashlib.sha256(model_url.encode('utf-8')).hexdigest ()
-                    async with aiofiles.open(f'{MODEL_DATA_PATH}/{fileName}.jpg', 'wb') as afp:
-                        logging.info ('Now Saving model name is %s, model id is : %s , FileName : %s',
-                                      model_name,
-                                      model_id, fileName)
-                        await afp.write(await response.content.read())
-                        end_time = time.time ()
-                        print('Time :', end_time - start_time)
-                        await afp.close()
+    async def async_download(self, model_url, photo_dir, photo_name):
+        """
+        This is a download program
+        :param photo_name: model photo name
+        :param model_url: model url
+        :param model_name: model name
+        :param model_id: model id
+        :param photo_dir: photo dir
+        """
+        # use aiohttp.ClientSession and aiofiles async download photo to local computer
+        async with aiohttp.ClientSession(headers=HEADER) as session:
+            async with session.get(model_url) as response:
 
+                # use aiofiles library asyncio download photo
+                async with aiofiles.open(f'{photo_dir}/{photo_name}.jpg', 'wb') as afp:
+                    await afp.write(await response.content.read())
+                    logging.info(f'Saving {photo_name}.jpg Successfully')
 
+                    # close aiofiles async program
+                    await afp.close()
 
+    async def main(self,start_to_end):
+        """
+        This is a main program
+        :return:
+        """
 
+        # timeout = aiohttp.ClientTimeout(total=100, connect=20,sock_connect=10,sock_read=10)
+        async with aiohttp.ClientSession(headers=HEADER) as session:
 
-# 装饰器retry
-@retry(stop_max_attempt_number=10, retry_on_result= lambda x: x is False)
-async def main():
-    """
-    主程序
-    :return:
-    """
-    async with aiohttp.ClientSession(headers=HEADER, timeout=600) as session:
-        # 设置tasks
-        tasks = [asyncio.ensure_future(save_data(await parse_page(MAIN_URL.format(model_id=model_id))))
-                 for model_id in range(START_ID, END_ID + 1) ]
-        await asyncio.wait(tasks)
-        # 关闭会话
-        await session.close()
+            # start asyncio task
+            tasks = [asyncio.ensure_future(self.parse_page(MAIN_URL.format(model_id=model_id)))
+                        for model_id in range(start_to_end[0], start_to_end[1]+1)]
+
+            # use asyncio.gather method
+            responses = asyncio.gather(*tasks)
+            await responses
+            await session.close()
+
+    def exception_handler(self):
+        user_input = input ('Are you want continue run program[y]')
+        if user_input == 'y' or user_input == 'Y':
+            self.kind_girls_run ()
+        else:
+            quit()
+
+    def input_handler(self):
+        # model start download ID
+        START_ID = int(input ('You have to input Start Number: '))
+
+        # model end download ID
+        END_ID = int(input ('You have to input End Number: '))
+
+        # set tuple: start_to_end storge START_ID and END_ID
+        start_to_end = (START_ID, END_ID)
+
+        return start_to_end
+
+    def kind_girls_run(self):
+        """
+        loop running program
+        :return:
+        """
+        # call input function
+        input_id = self.input_handler ()
+
+        # set flag is True
+        flag = True
+
+        # use while statement
+        while flag:
+            try:
+                # start time
+                start_time = time.time ()
+
+                loop = asyncio.get_event_loop ()
+                loop.run_until_complete ((self.main(input_id)))
+
+                # end time
+                end_time = time.time ()
+
+                # display program consumed time
+                logging.info (f"Total Consumed Time : {round ((end_time - start_time) / 60)} Minus")
+
+                # set flag is False, quit while statement
+                flag = False
+
+            # except aiohttp.ClientTimeout or aiohttp.ClientConnectorError or socket.timeout  as e:
+            except Exception as e:
+                # sleep 1 seconds
+                logging.info ('=====================================================')
+                # print(e)
+                logging.error (f'---Occurred {e} Error, 5 seconds after try again--- ')
+                # logging.info ('=====================================================')
+                time.sleep(10)
+                # self.exception_handler ()
+                continue
+            except KeyboardInterrupt:
+                logging.info ('Download Program are exited')
 
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop ()
-    loop.run_until_complete((main ()))
+    # call kind_girls_run() function
+    # start running program
+    kind_girls = KindGirls()
+    kind_girls.kind_girls_run()
+
+
+
