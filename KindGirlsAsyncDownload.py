@@ -55,7 +55,7 @@ class KindGirls():
             # use Regex Expression get model url
             model_urls = re.findall("""<a[^>]+href=["']([^'"<>]+)["'][^<>]+/?>""", str(item))
             for model_url in model_urls:
-                # model_urls.append(url)
+                
                 # JPG file path
                 number += 1
                 photo_name = model_name + f'_{model_id}_' + str (number)
@@ -71,7 +71,6 @@ class KindGirls():
                     # logging.info(f'{photo_name} is existed, skip download')
                     pass
                 elif not exists(photo_dir):
-
                     makedirs (photo_dir)
                     logging.info(f"Create {model_name}_{model_id} Successfully!")
                 elif not exists(model_photo_path) or getsize(model_photo_path) == 0:
